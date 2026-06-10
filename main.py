@@ -9,9 +9,9 @@ from slowapi.errors import RateLimitExceeded
 URL = "https://map.stoneworks.gg/abex/#abexilas:0:0:0:1500:0:0:0:0:perspective"
 
 limiter = Limiter(key_func=get_remote_address)
-fastapi_app = fastapi.FastAPI()
-fastapi_app.state.limiter = limiter
-fastapi_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app = fastapi.FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 def parse_money(text):
     return float(text.replace("$", "").replace(",", "").strip())
@@ -79,7 +79,7 @@ def get_land_info(land_name):
     info["name"] = result["label"]
     return info
 
-@fastapi_app.get("/land_info")
+@app.get("/land_info")
 @limiter.limit("5/second")
 async def land_info(request: fastapi.Request):
     name = request.query_params.get("name")
@@ -90,4 +90,4 @@ async def land_info(request: fastapi.Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(fastapi_app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
