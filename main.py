@@ -1,17 +1,17 @@
-from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import fastapi
 import re
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-URL = "https://map.stoneworks.gg/abex/#abexilas:0:0:0:1500:0:0:0:0:perspective"
+import requests
 
 limiter = Limiter(key_func=get_remote_address)
 app = fastapi.FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+URL = "https://map.stoneworks.gg/abex/maps/abexilas/live/markers.json"
 
 def parse_money(text):
     return float(text.replace("$", "").replace(",", "").strip())
@@ -19,8 +19,6 @@ def parse_money(text):
 def extract_land_info(html):
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text("\n")
-
-    info = {}
 
     patterns = {
         "level": r"Level:\s*(.+)",
@@ -32,62 +30,36 @@ def extract_land_info(html):
         "founded_at": r"Founded at:\s*(.+)",
     }
 
+    info = {}
     for key, pattern in patterns.items():
-        match = re.search(pattern, text)
-        if match:
-            info[key] = match.group(1).strip()
+        m = re.search(pattern, text)
+        if m:
+            info[key] = m.group(1).strip()
 
     if "balance" in info:
         info["balance"] = parse_money(info["balance"])
 
     return info
 
-def get_land_info(land_name):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_function("() => window.bluemap?.mapViewer?.markers?.children?.[2]?.children", timeout=60000)
+def get_land_info(name):
+    data = requests.get(URL, timeout=20).json()
 
-        result = page.evaluate(
-            """
-            (landName) => {
-              const markers = window.bluemap?.mapViewer?.markers?.children?.[2]?.children;
-              if (!markers) return null;
+    lands = data["me.angeschossen.lands"]["markers"]
 
-              for (const marker of markers) {
-                const label = marker?.data?.label || marker?._markerData?.label;
-                const detail = marker?.data?.detail || marker?._markerData?.detail;
+    for marker_id, marker in lands.items():
+        detail = marker.get("detail", "")
+        label = marker.get("label", "")
 
-                if (label && label.toLowerCase() === landName.toLowerCase()) {
-                  return { label, detail };
-                }
-              }
+        if name.lower() in label.lower() or name.lower() in detail.lower():
+            info = extract_land_info(detail)
+            info["name"] = label
+            info["marker_id"] = marker_id
+            return info
 
-              return null;
-            }
-            """,
-            land_name
-        )
-
-        browser.close()
-
-    if not result:
-        return None
-
-    info = extract_land_info(result["detail"])
-    info["name"] = result["label"]
-    return info
+    return None
 
 @app.get("/land_info")
 @limiter.limit("5/second")
-async def land_info(request: fastapi.Request):
-    name = request.query_params.get("name")
+async def land_info(request: fastapi.Request, name: str):
     info = get_land_info(name)
-    if not info:
-        return {"error": "Not found."}
-    return info
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="bluemap-scrape.vercel.app", port=8000)
+    return info or {"error": "Not found"}
