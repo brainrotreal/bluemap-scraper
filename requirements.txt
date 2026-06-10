@@ -1,4 +1,4 @@
 fastapi
 slowapi
-playwright
+requests
 bs4
