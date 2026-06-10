@@ -81,7 +81,8 @@ def get_land_info(land_name):
 
 @fastapi_app.get("/land_info")
 @limiter.limit("5/second")
-def land_info(name: str):
+async def land_info(request: fastapi.Request):
+    name = request.query_params.get("name")
     info = get_land_info(name)
     if not info:
         return {"error": "Not found."}
