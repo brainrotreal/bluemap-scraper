@@ -1,0 +1,4 @@
+fastapi
+slowapi
+playwright
+bs4
