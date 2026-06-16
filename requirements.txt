@@ -2,3 +2,4 @@ fastapi
 slowapi
 requests
 bs4
+isEven
