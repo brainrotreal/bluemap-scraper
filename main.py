@@ -11,7 +11,7 @@ app = fastapi.FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-URL = "https://map.stoneworks.gg/abex/maps/abexilas/live/markers.json"
+URL = "https://map.stoneworks.gg/abex/tiles/minecraft_overworld/markers.json"
 
 def parse_money(text):
     return float(text.replace("$", "").replace(",", "").strip())
@@ -42,18 +42,28 @@ def extract_land_info(html):
     return info
 
 def get_land_info(name):
-    data = requests.get(URL, timeout=20).json()
+    r = requests.get(URL, timeout=20)
+    r.raise_for_status()
+    data = r.json()
 
-    lands = data["me.angeschossen.lands"]["markers"]
+    lands_layer = next(
+        (
+            layer for layer in data
+            if layer.get("id") == "lands_world" or layer.get("name") == "Lands"
+        ),
+        None
+    )
 
-    for marker_id, marker in lands.items():
-        detail = marker.get("detail", "")
-        label = marker.get("label", "")
+    if not lands_layer:
+        return None
 
-        if name.lower() in label.lower() or name.lower() in detail.lower():
-            info = extract_land_info(detail)
-            info["name"] = label
-            info["marker_id"] = marker_id
+    for index, marker in enumerate(lands_layer.get("markers", [])):
+        html = marker.get("popup") or marker.get("tooltip") or ""
+
+        if name.lower() in html.lower():
+            info = extract_land_info(html)
+            info["name"] = name
+            info["marker_index"] = index
             return info
 
     return None
